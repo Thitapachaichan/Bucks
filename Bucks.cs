@@ -4,38 +4,49 @@ using System.IO;
 
 namespace BucksLoan
 {
+    // Fixed limits used for input validation and table layout
+    static class Limits
+    {
+        public const double MaxPrincipal = 1000000000;
+        public const double MaxRate = 100;
+        public const int MaxMonths = 600;
+        public const int NameWidth = 16;
+        public const int PageSize = 20;      // schedule rows shown before pausing
+    }
+
     class Program
     {
-        // ===== Main: ควบคุมโปรแกรม และเรียกทุกฟังก์ชันโดยตรง =====
+        // ===== Main: controls the program and calls every function directly =====
         static void Main(string[] args)
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;   // same number format on every machine
             bool running = true;
 
-            while (running)                                              // LOOP เมนู
+            while (running)                                              // MENU LOOP
             {
                 Display.ShowMenu();
-                int choice = InputHelper.ReadInt("เลือกเมนู (1-4): ", 1, 4);
+                int choice = InputHelper.ReadInt("Select a menu option (1-4): ", 1, 4);
 
-                switch (choice)                                          // SWITCH CASE เมนูหลัก
+                switch (choice)                                          // SWITCH CASE main menu
                 {
                     case 1:
                     {
-                        Console.WriteLine("\n--- คำนวณเงินกู้ ---");
-                        Console.WriteLine("วิธีคิดดอกเบี้ย: 1=ดอกเบี้ยคงที่ (Flat Rate)  2=ลดต้นลดดอก");
-                        int method = InputHelper.ReadInt("เลือกวิธี: ", 1, 2);
-                        Console.WriteLine("ประเภทสินเชื่อ: 1=บ้าน 2=รถ 3=ส่วนบุคคล 4=อื่นๆ");
-                        int type = InputHelper.ReadInt("เลือกประเภท: ", 1, 4);
-                        Console.WriteLine("(อัตราดอกเบี้ยโดยประมาณ " + LoanCalculator.SuggestRate(type) + "% ต่อปี)");
+                        Console.WriteLine("\n--- Loan Calculation ---");
+                        Console.WriteLine("Interest method: 1=Flat Rate  2=Reducing Balance");
+                        int method = InputHelper.ReadInt("Select method: ", 1, 2);
+                        Console.WriteLine("Loan type: 1=Home 2=Car 3=Personal 4=Other");
+                        int type = InputHelper.ReadInt("Select type: ", 1, 4);
+                        Console.WriteLine("(Approximate interest rate " + LoanCalculator.SuggestRate(type) + "% per year)");
 
-                        double principal = InputHelper.ReadDouble("เงินต้น (บาท): ", 1, 1000000000);
-                        double rate = InputHelper.ReadDouble("ดอกเบี้ยต่อปี (%): ", 0, 100);
-                        int months = InputHelper.ReadInt("ระยะเวลาผ่อน (เดือน): ", 1, 600);
+                        double principal = InputHelper.ReadDouble("Principal (THB): ", 1, Limits.MaxPrincipal);
+                        double rate = InputHelper.ReadDouble("Annual interest rate (%): ", 0, Limits.MaxRate);
+                        int months = InputHelper.ReadInt("Repayment period (months): ", 1, Limits.MaxMonths);
 
                         double monthly = 0;
                         string methodName = "";
 
-                        switch (method)                                  // SWITCH CASE เลือกวิธีคิด
+                        switch (method)                                  // SWITCH CASE choose calculation method
                         {
                             case 1:
                                 monthly = LoanCalculator.CalcFlatMonthly(principal, rate, months);
@@ -43,56 +54,83 @@ namespace BucksLoan
                                 break;
                             case 2:
                                 monthly = LoanCalculator.CalcReducingMonthly(principal, rate, months);
-                                methodName = "ลดต้นลดดอก";
-                                Display.PrintSchedule(principal, rate, months, monthly);
+                                methodName = "Reducing Balance";
                                 break;
                         }
 
+                        Display.PrintSchedule(principal, rate, months, monthly, method);   // schedule for both methods
                         Display.PrintSummary(principal, monthly, months);
 
-                        int save = InputHelper.ReadInt("\nบันทึกผลลงไฟล์? (1=ใช่, 0=ไม่): ", 0, 1);
+                        if (method == 1)                                 // IF-ELSE: flat rate looks cheaper than it is
+                        {
+                            double effective = LoanCalculator.CalcEffectiveRate(principal, monthly, months);
+                            Console.WriteLine("Effective annual rate : " + effective.ToString("N2") + " % (nominal " + rate + " %)");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Effective annual rate : " + rate.ToString("N2") + " %");
+                        }
+
+                        int save = InputHelper.ReadInt("\nSave result to file? (1=Yes, 0=No): ", 0, 1);
                         if (save == 1)
                         {
                             FileManager.SaveRecord(methodName,
-                                "เงินต้น " + principal.ToString("N2") + " | ดอกเบี้ย " + rate + "% | "
-                                + months + " เดือน | ค่างวด " + monthly.ToString("N2"));
+                                "Principal " + principal.ToString("N2") + " | Interest " + rate + "% | "
+                                + months + " months | Installment " + monthly.ToString("N2"));
                         }
                         break;
                     }
 
                     case 2:
                     {
-                        Console.WriteLine("\n--- เปรียบเทียบสินเชื่อ ---");
-                        int n = InputHelper.ReadInt("จำนวนสินเชื่อที่จะเปรียบเทียบ (2-5): ", 2, 5);
+                        Console.WriteLine("\n--- Loan Comparison ---");
+                        Console.WriteLine("Interest method for all loans: 1=Flat Rate  2=Reducing Balance");
+                        int cmpMethod = InputHelper.ReadInt("Select method: ", 1, 2);
+                        int n = InputHelper.ReadInt("Number of loans to compare (2-5): ", 2, 5);
 
-                        string[] names = new string[n];                  // ARRAY 1 มิติ: ชื่อสินเชื่อ
-                        double[,] loanData = new double[n, 3];           // ARRAY 2 มิติ: [แถว=สินเชื่อ, คอลัมน์ 0=เงินต้น 1=ดอกเบี้ย 2=เดือน]
+                        string[] names = new string[n];                  // 1D ARRAY: loan names
+                        double[,] loanData = new double[n, 3];           // 2D ARRAY: [row=loan, column 0=principal 1=interest 2=months]
 
-                        InputHelper.ReadLoans(names, loanData);          // รับข้อมูลเข้าทุกช่อง
+                        InputHelper.ReadLoans(names, loanData);          // read data into every cell
 
                         Display.PrintCompareHeader();
                         int bestIndex = 0;
+                        double bestRate = 0;
                         double bestInterest = 0;
                         for (int i = 0; i < n; i++)
                         {
-                            double pay = LoanCalculator.CalcReducingMonthly(loanData[i, 0], loanData[i, 1], (int)loanData[i, 2]);
+                            double pay = 0;
+                            switch (cmpMethod)                           // SWITCH CASE method used for every loan
+                            {
+                                case 1:
+                                    pay = LoanCalculator.CalcFlatMonthly(loanData[i, 0], loanData[i, 1], (int)loanData[i, 2]);
+                                    break;
+                                case 2:
+                                    pay = LoanCalculator.CalcReducingMonthly(loanData[i, 0], loanData[i, 1], (int)loanData[i, 2]);
+                                    break;
+                            }
                             double interest = pay * loanData[i, 2] - loanData[i, 0];
-                            Display.PrintLoanRow(names[i], pay, interest);
+                            double effRate = LoanCalculator.CalcEffectiveRate(loanData[i, 0], pay, (int)loanData[i, 2]);
+                            Display.PrintLoanRow(names[i], pay, interest, effRate);
 
-                            if (i == 0 || interest < bestInterest)
+                            if (i == 0 || effRate < bestRate)            // compare by effective rate, not by total baht
                             {
                                 bestIndex = i;
+                                bestRate = effRate;
                                 bestInterest = interest;
                             }
                         }
-                        Console.WriteLine("\nจ่ายดอกเบี้ยรวมน้อยที่สุด: " + names[bestIndex]
-                                          + " (" + bestInterest.ToString("N2") + " บาท)");
+                        Console.WriteLine("\n(Ranked by effective annual rate, so loans with different amounts/terms are comparable)");
+                        Console.WriteLine("Cheapest loan: " + names[bestIndex]
+                                          + " (" + bestRate.ToString("N2") + " % per year, total interest "
+                                          + bestInterest.ToString("N2") + " THB)");
 
-                        int save2 = InputHelper.ReadInt("\nบันทึกผลลงไฟล์? (1=ใช่, 0=ไม่): ", 0, 1);
+                        int save2 = InputHelper.ReadInt("\nSave result to file? (1=Yes, 0=No): ", 0, 1);
                         if (save2 == 1)
                         {
-                            FileManager.SaveRecord("เปรียบเทียบ " + n + " สินเชื่อ",
-                                "ถูกที่สุด: " + names[bestIndex] + " | ดอกเบี้ยรวม " + bestInterest.ToString("N2"));
+                            FileManager.SaveRecord("Comparison of " + n + " loans",
+                                "Cheapest: " + names[bestIndex] + " | Effective rate " + bestRate.ToString("N2")
+                                + "% | Total interest " + bestInterest.ToString("N2"));
                         }
                         break;
                     }
@@ -102,17 +140,16 @@ namespace BucksLoan
                         break;
 
                     case 4:
-                        running = false;
-                        Console.WriteLine("ขอบคุณที่ใช้ระบบ Bucks (กำลังปิดโปรแกรม...)");
+                        running = false;                                 // the loop ends by itself, no Environment.Exit needed
+                        Console.WriteLine("Thank you for using Bucks (closing program...)");
                         System.Threading.Thread.Sleep(1500);
-                        Environment.Exit(0);
                         break;
                 }
             }
         }
     }
 
-    // โมดูลรับข้อมูลจากผู้ใช้ + ตรวจสอบความถูกต้อง
+    // Module for user input + validation
     static class InputHelper
     {
         public static int ReadInt(string prompt, int min, int max)
@@ -128,7 +165,7 @@ namespace BucksLoan
                 }
                 else
                 {
-                    Console.WriteLine("  กรุณากรอกจำนวนเต็มระหว่าง " + min + " ถึง " + max);
+                    Console.WriteLine("  Please enter a whole number between " + min + " and " + max);
                 }
             }
         }
@@ -146,41 +183,53 @@ namespace BucksLoan
                 }
                 else
                 {
-                    Console.WriteLine("  กรุณากรอกตัวเลขระหว่าง " + min + " ถึง " + max);
+                    Console.WriteLine("  Please enter a number between " + min + " and " + max);
                 }
             }
         }
 
-        // รับข้อมูลสินเชื่อเข้า array 1 มิติ (ชื่อ) และ array 2 มิติ (ตัวเลข) ให้ครบทุกช่อง
+        // Read loan data into the 1D array (names) and 2D array (numbers), filling every cell
         public static void ReadLoans(string[] names, double[,] loanData)
         {
             for (int i = 0; i < names.Length; i++)
             {
-                Console.WriteLine("\nสินเชื่อที่ " + (i + 1));
-                Console.Write("ชื่อ/ธนาคาร: ");
-                names[i] = Console.ReadLine();
-                loanData[i, 0] = ReadDouble("เงินต้น (บาท): ", 1, 1000000000);
-                loanData[i, 1] = ReadDouble("ดอกเบี้ยต่อปี (%): ", 0, 100);
-                loanData[i, 2] = ReadInt("ระยะเวลาผ่อน (เดือน): ", 1, 600);
+                Console.WriteLine("\nLoan " + (i + 1));
+                Console.Write("Name/Bank: ");
+                string text = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(text))                     // null or empty -> default name
+                {
+                    names[i] = "Loan " + (i + 1);
+                }
+                else
+                {
+                    names[i] = text.Trim();
+                    if (names[i].Length > Limits.NameWidth)              // keep the table aligned
+                    {
+                        names[i] = names[i].Substring(0, Limits.NameWidth);
+                    }
+                }
+                loanData[i, 0] = ReadDouble("Principal (THB): ", 1, Limits.MaxPrincipal);
+                loanData[i, 1] = ReadDouble("Annual interest rate (%): ", 0, Limits.MaxRate);
+                loanData[i, 2] = ReadInt("Repayment period (months): ", 1, Limits.MaxMonths);
             }
         }
     }
 
-    // โมดูลสูตรคำนวณ
+    // Module for calculation formulas
     static class LoanCalculator
     {
-        // Flat Rate: ดอกเบี้ยคิดจากเงินต้นเต็มจำนวนตลอดสัญญา
+        // Flat Rate: interest is calculated on the full principal for the entire contract
         public static double CalcFlatMonthly(double principal, double annualRate, int months)
         {
             double totalInterest = principal * (annualRate / 100) * (months / 12.0);
             return (principal + totalInterest) / months;
         }
 
-        // ลดต้นลดดอก: ค่างวดคงที่ตามสูตร EMI
+        // Reducing balance: fixed installment using the EMI formula
         public static double CalcReducingMonthly(double principal, double annualRate, int months)
         {
-            double r = annualRate / 100 / 12;                  // ดอกเบี้ยต่อเดือน
-            if (r == 0)                                        // กันหารด้วยศูนย์
+            double r = annualRate / 100 / 12;                  // monthly interest rate
+            if (r == 0)                                        // avoid division by zero
             {
                 return principal / months;
             }
@@ -188,7 +237,32 @@ namespace BucksLoan
             return principal * r * factor / (factor - 1);
         }
 
-        // อัตราดอกเบี้ยโดยประมาณตามประเภทสินเชื่อ
+        // Effective annual rate: the reducing-balance rate that gives the same installment (bisection search)
+        public static double CalcEffectiveRate(double principal, double monthly, int months)
+        {
+            if (monthly * months <= principal)                 // no interest at all
+            {
+                return 0;
+            }
+            double low = 0;
+            double high = 1;                                   // monthly rate between 0% and 100%
+            for (int i = 0; i < 100; i++)                      // LOOP: narrow the range
+            {
+                double mid = (low + high) / 2;
+                double pay = CalcReducingMonthly(principal, mid * 12 * 100, months);
+                if (pay < monthly)
+                {
+                    low = mid;
+                }
+                else
+                {
+                    high = mid;
+                }
+            }
+            return (low + high) / 2 * 12 * 100;
+        }
+
+        // Approximate interest rate by loan type
         public static double SuggestRate(int loanType)
         {
             switch (loanType)
@@ -201,42 +275,58 @@ namespace BucksLoan
         }
     }
 
-    // โมดูลแสดงผลบนหน้าจอ
+    // Module for on-screen display
     static class Display
     {
         public static void ShowMenu()
         {
             Console.WriteLine();
-            Console.WriteLine("===== Bucks: ระบบคำนวณดอกเบี้ยและวางแผนผ่อนชำระ =====");
-            Console.WriteLine("1. คำนวณเงินกู้ (Flat Rate / ลดต้นลดดอก)");
-            Console.WriteLine("2. เปรียบเทียบหลายสินเชื่อ");
-            Console.WriteLine("3. ดูประวัติที่บันทึกไว้");
-            Console.WriteLine("4. ออกจากโปรแกรม");
+            Console.WriteLine("===== Bucks: Interest Calculator and Repayment Planner =====");
+            Console.WriteLine("1. Calculate loan (Flat Rate / Reducing Balance)");
+            Console.WriteLine("2. Compare multiple loans");
+            Console.WriteLine("3. View saved history");
+            Console.WriteLine("4. Exit program");
         }
 
-        public static void PrintSchedule(double principal, double annualRate, int months, double payment)
+        // Repayment schedule for both methods (method 1 = Flat Rate, 2 = Reducing Balance)
+        public static void PrintSchedule(double principal, double annualRate, int months, double payment, int method)
         {
             double r = annualRate / 100 / 12;
             double balance = principal;
 
             Console.WriteLine();
-            Console.WriteLine("งวด |  ค่างวด  |  ดอกเบี้ย |  ตัดต้น  |  ยอดคงเหลือ");
-            Console.WriteLine("----------------------------------------------------");
+            Console.WriteLine("No. | " + "Payment".PadLeft(12) + " | " + "Interest".PadLeft(12)
+                + " | " + "Principal".PadLeft(12) + " | " + "Balance".PadLeft(14));
+            Console.WriteLine("------------------------------------------------------------------");
 
-            for (int i = 1; i <= months; i++)                  // LOOP ทุกงวด
+            for (int i = 1; i <= months; i++)                  // LOOP through every installment
             {
-                double interest = balance * r;                 // ดอกเบี้ยเดือนนี้
-                double principalPaid = payment - interest;     // ส่วนที่ตัดเงินต้น
+                double interest;
+                if (method == 1)                               // Flat Rate: same interest every month
+                {
+                    interest = principal * r;
+                }
+                else                                           // Reducing balance: interest on remaining balance
+                {
+                    interest = balance * r;
+                }
+                double principalPaid = payment - interest;     // portion that reduces the principal
                 balance = balance - principalPaid;
-                if (balance < 0.005)                           // กันเศษทศนิยมติดลบ
+                if (balance < 0.005)                           // prevent negative decimal remainder
                 {
                     balance = 0;
                 }
                 Console.WriteLine(i.ToString().PadLeft(3) + " | "
-                    + payment.ToString("N2").PadLeft(8) + " | "
-                    + interest.ToString("N2").PadLeft(9) + " | "
-                    + principalPaid.ToString("N2").PadLeft(8) + " | "
-                    + balance.ToString("N2").PadLeft(11));
+                    + payment.ToString("N2").PadLeft(12) + " | "
+                    + interest.ToString("N2").PadLeft(12) + " | "
+                    + principalPaid.ToString("N2").PadLeft(12) + " | "
+                    + balance.ToString("N2").PadLeft(14));
+
+                if (i % Limits.PageSize == 0 && i < months)    // pause so long schedules can be read
+                {
+                    Console.Write("-- Press Enter to continue --");
+                    Console.ReadLine();
+                }
             }
         }
 
@@ -244,32 +334,35 @@ namespace BucksLoan
         {
             double total = monthly * months;
             Console.WriteLine();
-            Console.WriteLine("ค่างวดต่อเดือน : " + monthly.ToString("N2") + " บาท");
-            Console.WriteLine("ยอดชำระรวม     : " + total.ToString("N2") + " บาท");
-            Console.WriteLine("ดอกเบี้ยรวม    : " + (total - principal).ToString("N2") + " บาท");
+            Console.WriteLine("Monthly installment   : " + monthly.ToString("N2") + " THB");
+            Console.WriteLine("Total payment         : " + total.ToString("N2") + " THB");
+            Console.WriteLine("Total interest        : " + (total - principal).ToString("N2") + " THB");
         }
 
         public static void PrintCompareHeader()
         {
             Console.WriteLine();
-            Console.WriteLine("ชื่อ             | ค่างวด/เดือน | ดอกเบี้ยรวม");
-            Console.WriteLine("---------------------------------------------");
+            Console.WriteLine("Name".PadRight(Limits.NameWidth) + " | " + "Monthly Pay".PadLeft(14)
+                + " | " + "Total Interest".PadLeft(16) + " | " + "Eff. Rate %".PadLeft(11));
+            Console.WriteLine("------------------------------------------------------------------");
         }
 
-        public static void PrintLoanRow(string name, double pay, double interest)
+        public static void PrintLoanRow(string name, double pay, double interest, double effRate)
         {
-            Console.WriteLine(name.PadRight(16) + " | "
-                + pay.ToString("N2").PadLeft(12) + " | "
-                + interest.ToString("N2").PadLeft(11));
+            Console.WriteLine(name.PadRight(Limits.NameWidth) + " | "
+                + pay.ToString("N2").PadLeft(14) + " | "
+                + interest.ToString("N2").PadLeft(16) + " | "
+                + effRate.ToString("N2").PadLeft(11));
         }
     }
 
-    // โมดูลจัดการไฟล์ (File I/O): บันทึกและอ่านประวัติ
+    // File management module (File I/O): save and read history
     static class FileManager
     {
-        private const string FileName = "history.txt";
+        // Stored next to the program so the location is always the same
+        private static readonly string FileName = Path.Combine(AppContext.BaseDirectory, "history.txt");
 
-        // เขียนต่อท้ายไฟล์ (true = append)
+        // Write to the end of the file (true = append)
         public static void SaveRecord(string title, string detail)
         {
             try
@@ -279,37 +372,48 @@ namespace BucksLoan
                     string time = DateTime.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
                     writer.WriteLine(time + " | " + title + " | " + detail);
                 }
-                Console.WriteLine("บันทึกลงไฟล์ " + FileName + " เรียบร้อย");
+                Console.WriteLine("Saved to file " + FileName + " successfully");
             }
             catch (IOException)
             {
-                Console.WriteLine("ไม่สามารถบันทึกไฟล์ได้");
+                Console.WriteLine("Unable to save file");
+            }
+            catch (UnauthorizedAccessException)                // read-only folder / no permission
+            {
+                Console.WriteLine("Unable to save file (no permission)");
             }
         }
 
-        // อ่านไฟล์ทีละบรรทัดแล้วแสดงผล
+        // Read the file line by line and display it
         public static void ShowHistory()
         {
-            Console.WriteLine("\n--- ประวัติการคำนวณ ---");
+            Console.WriteLine("\n--- Calculation History ---");
             if (!File.Exists(FileName))
             {
-                Console.WriteLine("ยังไม่มีประวัติที่บันทึกไว้");
+                Console.WriteLine("No saved history yet");
             }
             else
             {
-                using (StreamReader reader = new StreamReader(FileName))
+                try
                 {
-                    string line;
-                    int count = 0;
-                    while ((line = reader.ReadLine()) != null)
+                    using (StreamReader reader = new StreamReader(FileName))
                     {
-                        count++;
-                        Console.WriteLine(count + ". " + line);
+                        string line;
+                        int count = 0;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            count++;
+                            Console.WriteLine(count + ". " + line);
+                        }
+                        if (count == 0)
+                        {
+                            Console.WriteLine("File is empty");
+                        }
                     }
-                    if (count == 0)
-                    {
-                        Console.WriteLine("ไฟล์ว่างเปล่า");
-                    }
+                }
+                catch (IOException)
+                {
+                    Console.WriteLine("Unable to read file");
                 }
             }
         }
