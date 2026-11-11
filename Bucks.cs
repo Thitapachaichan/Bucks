@@ -19,7 +19,14 @@ namespace BucksLoan
         // ===== Main: controls the program and calls every function directly =====
         static void Main(string[] args)
         {
-            Console.OutputEncoding = System.Text.Encoding.UTF8;
+            try
+            {
+                Console.OutputEncoding = System.Text.Encoding.UTF8;
+                Console.InputEncoding = System.Text.Encoding.UTF8;      // allow Thai bank names to be typed
+            }
+            catch (IOException)                                         // no console attached: keep defaults
+            {
+            }
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;   // same number format on every machine
             bool running = true;
 
@@ -58,7 +65,11 @@ namespace BucksLoan
                                 break;
                         }
 
-                        Display.PrintSchedule(principal, rate, months, monthly, method);   // schedule for both methods
+                        int showSchedule = InputHelper.ReadInt("Show repayment schedule? (1=Yes, 0=No): ", 0, 1);
+                        if (showSchedule == 1)                           // long schedules are optional
+                        {
+                            Display.PrintSchedule(principal, rate, months, monthly, method);
+                        }
                         Display.PrintSummary(principal, monthly, months);
 
                         if (method == 1)                                 // IF-ELSE: flat rate looks cheaper than it is
@@ -121,7 +132,7 @@ namespace BucksLoan
                             }
                         }
                         Console.WriteLine("\n(Ranked by effective annual rate, so loans with different amounts/terms are comparable)");
-                        Console.WriteLine("Cheapest loan: " + names[bestIndex]
+                        Console.WriteLine("Lowest-rate loan: " + names[bestIndex]
                                           + " (" + bestRate.ToString("N2") + " % per year, total interest "
                                           + bestInterest.ToString("N2") + " THB)");
 
@@ -129,7 +140,7 @@ namespace BucksLoan
                         if (save2 == 1)
                         {
                             FileManager.SaveRecord("Comparison of " + n + " loans",
-                                "Cheapest: " + names[bestIndex] + " | Effective rate " + bestRate.ToString("N2")
+                                "Lowest rate: " + names[bestIndex] + " | Effective rate " + bestRate.ToString("N2")
                                 + "% | Total interest " + bestInterest.ToString("N2"));
                         }
                         break;
@@ -295,9 +306,9 @@ namespace BucksLoan
             double balance = principal;
 
             Console.WriteLine();
-            Console.WriteLine("No. | " + "Payment".PadLeft(12) + " | " + "Interest".PadLeft(12)
-                + " | " + "Principal".PadLeft(12) + " | " + "Balance".PadLeft(14));
-            Console.WriteLine("------------------------------------------------------------------");
+            Console.WriteLine("No. | " + "Payment".PadLeft(16) + " | " + "Interest".PadLeft(16)
+                + " | " + "Principal".PadLeft(16) + " | " + "Balance".PadLeft(16));
+            Console.WriteLine("-------------------------------------------------------------------------------");
 
             for (int i = 1; i <= months; i++)                  // LOOP through every installment
             {
@@ -317,10 +328,10 @@ namespace BucksLoan
                     balance = 0;
                 }
                 Console.WriteLine(i.ToString().PadLeft(3) + " | "
-                    + payment.ToString("N2").PadLeft(12) + " | "
-                    + interest.ToString("N2").PadLeft(12) + " | "
-                    + principalPaid.ToString("N2").PadLeft(12) + " | "
-                    + balance.ToString("N2").PadLeft(14));
+                    + payment.ToString("N2").PadLeft(16) + " | "
+                    + interest.ToString("N2").PadLeft(16) + " | "
+                    + principalPaid.ToString("N2").PadLeft(16) + " | "
+                    + balance.ToString("N2").PadLeft(16));
 
                 if (i % Limits.PageSize == 0 && i < months)    // pause so long schedules can be read
                 {
@@ -342,16 +353,16 @@ namespace BucksLoan
         public static void PrintCompareHeader()
         {
             Console.WriteLine();
-            Console.WriteLine("Name".PadRight(Limits.NameWidth) + " | " + "Monthly Pay".PadLeft(14)
-                + " | " + "Total Interest".PadLeft(16) + " | " + "Eff. Rate %".PadLeft(11));
-            Console.WriteLine("------------------------------------------------------------------");
+            Console.WriteLine("Name".PadRight(Limits.NameWidth) + " | " + "Monthly Pay".PadLeft(16)
+                + " | " + "Total Interest".PadLeft(18) + " | " + "Eff. Rate %".PadLeft(11));
+            Console.WriteLine("----------------------------------------------------------------------");
         }
 
         public static void PrintLoanRow(string name, double pay, double interest, double effRate)
         {
             Console.WriteLine(name.PadRight(Limits.NameWidth) + " | "
-                + pay.ToString("N2").PadLeft(14) + " | "
-                + interest.ToString("N2").PadLeft(16) + " | "
+                + pay.ToString("N2").PadLeft(16) + " | "
+                + interest.ToString("N2").PadLeft(18) + " | "
                 + effRate.ToString("N2").PadLeft(11));
         }
     }
@@ -414,6 +425,10 @@ namespace BucksLoan
                 catch (IOException)
                 {
                     Console.WriteLine("Unable to read file");
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Console.WriteLine("Unable to read file (no permission)");
                 }
             }
         }
