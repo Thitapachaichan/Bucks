@@ -1,8 +1,6 @@
 ﻿using System;
 using System.IO;
 
-// Loan Program: 4 menus
-// 1) Calculate loan  2) Compare loans  3) View history  4) Exit
 class LoanProgram
 {
     const string FILE_NAME = "history.txt";   // [Ch.8 File I/O]
@@ -23,7 +21,7 @@ class LoanProgram
                 case "2": CompareLoans(); break;
                 case "3": ShowHistory(); break;
                 case "4":
-                    Console.WriteLine("Cya!");
+                    Console.WriteLine("Bye!");
                     running = false;
                     break;
                 default:
@@ -35,7 +33,7 @@ class LoanProgram
 
     static void ShowMenu()
     {
-        Console.WriteLine("\n===== LOAN PROGRAM =====");
+        Console.WriteLine("\n===== BUCKS =====");
         Console.WriteLine("1. Calculate loan");
         Console.WriteLine("2. Compare loans");
         Console.WriteLine("3. View saved history");
@@ -49,7 +47,7 @@ class LoanProgram
         Console.WriteLine("\n--- Calculate Loan ---");
         double principal = ReadPositive("Loan amount (baht): ");
         double rate = ReadPositive("Interest rate (% per year): ");
-        int years = (int)ReadPositive("Years: ");
+        int years = ReadInt("Years: ");
 
         // Algorithm result
         double monthly = MonthlyPayment(principal, rate, years);
@@ -78,7 +76,7 @@ class LoanProgram
     {
         Console.WriteLine("\n--- Compare Loans ---");
         double principal = ReadPositive("Loan amount (baht): ");
-        int n = (int)ReadPositive("Number of offers to compare (2-5): ");
+        int n = ReadInt("Number of offers to compare (2-5): ");
 
         if (n < 2 || n > 5)
         {
@@ -87,18 +85,20 @@ class LoanProgram
         }
 
         string[] names = new string[n];         // [Ch.6 1D array] bank names
+        double[] rates = new double[n];         // [Ch.6 1D array] interest rates
+        int[] yearsList = new int[n];           // [Ch.6 1D array] years
         double[,] result = new double[n, 3];    // [Ch.7 2D array] monthly, total, interest
 
         for (int i = 0; i < n; i++)             // [Ch.5 loop]
         {
             Console.Write($"Offer {i + 1} name: ");
             names[i] = Console.ReadLine();
-            double rate = ReadPositive("  Rate (% per year): ");
-            int years = (int)ReadPositive("  Years: ");
+            rates[i] = ReadPositive("  Rate (% per year): ");
+            yearsList[i] = ReadInt("  Years: ");
 
-            double monthly = MonthlyPayment(principal, rate, years);
+            double monthly = MonthlyPayment(principal, rates[i], yearsList[i]);
             result[i, 0] = monthly;
-            result[i, 1] = monthly * years * 12;
+            result[i, 1] = monthly * yearsList[i] * 12;
             result[i, 2] = result[i, 1] - principal;
         }
 
@@ -149,11 +149,24 @@ class LoanProgram
         return principal * r * factor / (factor - 1);
     }
 
-    static double ReadPositive(string message) // Condition check. Not a number or less than 0? Invalid.
+    // Reads a decimal number > 0 (for money and interest rate)
+    static double ReadPositive(string message)
     {
         double value;
         Console.Write(message);
         while (!double.TryParse(Console.ReadLine(), out value) || value <= 0)
+        {
+            Console.Write("Invalid. " + message);
+        }
+        return value;
+    }
+
+    // Reads a whole number > 0 (for years and number of offers)
+    static int ReadInt(string message)
+    {
+        int value;
+        Console.Write(message);
+        while (!int.TryParse(Console.ReadLine(), out value) || value <= 0)
         {
             Console.Write("Invalid. " + message);
         }
